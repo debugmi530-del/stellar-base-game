@@ -11,15 +11,15 @@ const QUALITY_HIGH   = 2
 
 const PRESETS = {
 	QUALITY_LOW: {
-		"render_scale":          0.60,   # 60% разрешения — главная экономия
+		"render_scale":          0.60,
 		"shadow_size":           512,
 		"shadow_enabled":        false,
 		"msaa":                  0,
 		"max_fps":               30,
 		"view_distance":         60.0,
-		"particle_multiplier":   0.0,    # выключить все частицы
-		"lod_bias":              2.0,    # агрессивный LOD
-		"texture_filter":        0,      # nearest (быстрее)
+		"particle_multiplier":   0.0,
+		"lod_bias":              2.0,
+		"texture_filter":        0,
 		"occlusion_culling":     true,
 		"label": "Низкое"
 	},
@@ -51,45 +51,37 @@ const PRESETS = {
 	}
 }
 
-var current_quality: int = QUALITY_LOW   # по умолчанию — низкое
+var current_quality: int = QUALITY_LOW
+
+# BUGFIX: кэш оригинальных значений amount у частиц
+# чтобы правильно восстанавливать их при смене качества
+var _particle_original_amounts: Dictionary = {}
 
 signal quality_changed(level)
 
 func _ready():
-	# Загрузить сохранённый уровень качества
 	var saved = GameManager.settings.get("graphics_quality", QUALITY_LOW)
 	set_quality(saved)
 
-# ---------------------------------------------------------
 func set_quality(level: int):
 	level = clampi(level, QUALITY_LOW, QUALITY_HIGH)
 	current_quality = level
 	GameManager.settings["graphics_quality"] = level
 	var p = PRESETS[level]
 
-	# Масштаб рендера
 	get_viewport().scaling_3d_scale = p["render_scale"]
-
-	# FPS лимит
 	Engine.max_fps = p["max_fps"]
 
-	# Тени
 	var viewport = get_viewport()
 	if p["shadow_enabled"]:
 		RenderingServer.directional_shadow_atlas_set_size(p["shadow_size"], true)
 	else:
 		RenderingServer.directional_shadow_atlas_set_size(0, false)
 
-	# MSAA
 	viewport.msaa_3d = p["msaa"]
 
-	# LOD смещение (глобальный масштаб дистанции переключения LOD)
 	get_tree().call_group("lod_targets", "set_lod_bias", p["lod_bias"])
-
-	# Дистанция видимости камеры
 	_update_camera_far(p["view_distance"])
-
-	# Частицы
 	_update_particles(p["particle_multiplier"])
 
 	quality_changed.emit(level)
@@ -104,7 +96,6 @@ func get_preset() -> Dictionary:
 func get_label() -> String:
 	return PRESETS[current_quality]["label"]
 
-# ---------------------------------------------------------
 func _update_camera_far(dist: float):
 	var cam = _find_camera()
 	if cam:
@@ -119,19 +110,24 @@ func _find_camera() -> Camera3D:
 	return null
 
 func _update_particles(mult: float):
-	var pnodes = get_tree().get_nodes_in_group("game_particles") if get_tree() else []
-	for p in pnodes:
-		if p is GPUParticles3D:
-			p.emitting = (mult > 0.0)
-			p.amount = max(1, int(p.amount * mult))
+	if not get_tree():
+		return
+	var pnodes = get_tree().get_nodes_in_group("game_particles")
+	for particle_node in pnodes:
+		if particle_node is GPUParticles3D:
+			var node_id = particle_node.get_instance_id()
+			# BUGFIX: сохраняем оригинальное количество частиц один раз
+			if not _particle_original_amounts.has(node_id):
+				_particle_original_amounts[node_id] = particle_node.amount
+			var original = _particle_original_amounts[node_id]
+			if mult <= 0.0:
+				particle_node.emitting = false
+				# Не меняем amount — сохраняем для будущего восстановления
+			else:
+				particle_node.emitting = true
+				particle_node.amount = max(1, int(original * mult))
 
-# ---------------------------------------------------------
-# Помощник — определить рекомендуемое качество по RAM
-# (Godot 4 не даёт прямого доступа к RAM, используем
-#  Performance.get_monitor как косвенную оценку)
 func detect_recommended_quality() -> int:
-	# На Android по умолчанию LOW — самый безопасный вариант
-	# для бюджетных устройств (Helio G80, Snapdragon 662 и ниже)
 	if OS.get_name() == "Android":
 		return QUALITY_LOW
 	return QUALITY_MEDIUM
