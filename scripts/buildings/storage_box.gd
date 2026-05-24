@@ -1,12 +1,9 @@
 extends StaticBody3D
 
-var bonus_storage: float = 200.0
-
-func _ready():
-	_apply_storage_bonus()
-
-func _apply_storage_bonus():
-	pass
-
-func interact(_player):
-	get_tree().current_scene.get_node("UI/HUD/InventoryScreen").visible = true
+func interact(_player) -> void:
+	var ui = get_tree().current_scene.get_node_or_null("UI")
+	if ui:
+		var inv = ui.get_node_or_null("InventoryScreen")
+		if inv:
+			inv.visible = true
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
