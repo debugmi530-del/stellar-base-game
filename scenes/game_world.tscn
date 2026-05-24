@@ -1,11 +1,12 @@
-[gd_scene load_steps=8 format=3 uid="uid://game_world"]
+[gd_scene load_steps=11 format=3 uid="uid://game_world"]
 
 [ext_resource type="Script" path="res://scripts/planet_world.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/player.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/ui_hud.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/pause_menu.gd" id="4"]
-[ext_resource type="Script" path="res://scripts/build_system.gd" id="5"]
-[ext_resource type="Script" path="res://scripts/audio_manager.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/travel_screen.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/upgrade_tree.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/inventory_screen.gd" id="9"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_1"]
 radius = 0.4
@@ -40,6 +41,8 @@ surface_material_override/0 = SubResource("mat_ground")
 
 [node name="ResourceSpawner" type="Node3D" parent="."]
 
+[node name="BuildingRoot" type="Node3D" parent="."]
+
 [node name="Player" type="CharacterBody3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 script = ExtResource("2")
@@ -56,28 +59,30 @@ target_position = Vector3(0, 0, -3)
 enabled = true
 
 [node name="FootstepPlayer" type="AudioStreamPlayer3D" parent="Player"]
-[node name="SuitAudio" type="AudioStreamPlayer3D" parent="Player"]
-[node name="OxygenTimer" type="Timer" parent="Player"]
-wait_time = 1.0
-
-[node name="BuildSystem" type="Node" parent="."]
-script = ExtResource("5")
-
-[node name="AudioManager" type="Node" parent="."]
-script = ExtResource("6")
-[node name="MusicPlayer" type="AudioStreamPlayer" parent="AudioManager"]
-bus = "Music"
-[node name="AmbientPlayer" type="AudioStreamPlayer" parent="AudioManager"]
-bus = "Ambient"
-
-[node name="BuildingRoot" type="Node3D" parent="."]
 
 [node name="UI" type="CanvasLayer" parent="."]
+
 [node name="HUD" type="Control" parent="UI"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("3")
+
 [node name="PauseMenu" type="Control" parent="UI"]
 anchor_right = 1.0
 anchor_bottom = 1.0
 script = ExtResource("4")
+
+[node name="TravelScreen" type="Control" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("7")
+
+[node name="UpgradeScreen" type="Control" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("8")
+
+[node name="InventoryScreen" type="Control" parent="UI"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("9")
