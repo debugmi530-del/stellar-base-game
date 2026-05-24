@@ -47,15 +47,32 @@ jobs:
           mkdir -p "$TEMPLATES_DIR"
           wget -q "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz" -O templates.tpz
           unzip -q templates.tpz -d tpl_extracted
-          cp tpl_extracted/templates/android_debug.apk "$TEMPLATES_DIR/"
-          cp tpl_extracted/templates/android_release.apk "$TEMPLATES_DIR/"
-          cp tpl_extracted/templates/android_source.zip "$TEMPLATES_DIR/"
+          cp tpl_extracted/templates/android_debug.apk     "$TEMPLATES_DIR/"
+          cp tpl_extracted/templates/android_release.apk   "$TEMPLATES_DIR/"
+          cp tpl_extracted/templates/android_source.zip    "$TEMPLATES_DIR/"
+
+      - name: Generate debug keystore
+        run: |
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            2>/dev/null
+          echo "KEYSTORE_PATH=$(pwd)/debug.keystore" >> $GITHUB_ENV
+          echo "Keystore generated"
 
       - name: Configure Godot editor settings
         run: |
           mkdir -p "$HOME/.config/godot"
-          printf '[gd_resource type="EditorSettings" format=3]\n[resource]\nexport/android/android_sdk_path = "%s"\n' \
-            "${ANDROID_SDK_ROOT}" > "$HOME/.config/godot/editor_settings-4.tres"
+          printf '[gd_resource type="EditorSettings" format=3]\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/debug_keystore = "%s"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' \
+            "${ANDROID_SDK_ROOT}" \
+            "$(pwd)/debug.keystore" \
+            > "$HOME/.config/godot/editor_settings-4.tres"
 
       - name: Install Godot Android build template into project
         run: |
@@ -121,19 +138,16 @@ jobs:
                   t = y / h
                   for ch in range(3):
                       img[y, :, ch] = int(zenith[ch] * (1 - t) + horizon[ch] * t)
-              # Nebula clouds
               cloud = noise2d(w, h, scale=0.15, octaves=5, seed=seed + 3000)
               for ch in range(3):
                   layer = (cloud * 40).astype(np.uint8)
                   img[:h//2, :, ch] = np.clip(img[:h//2, :, ch].astype(int) + layer[:h//2], 0, 255).astype(np.uint8)
-              # Stars
               xs = rng.randint(0, w, 8000); ys = rng.randint(0, h * 2 // 3, 8000)
               br = rng.randint(160, 255, 8000)
               for i in range(8000):
                   img[ys[i], xs[i]] = [br[i], br[i], min(255, br[i] + 20)]
               return Image.fromarray(img)
 
-          # === Planet definitions ===
           PLANETS = [
             ("mars",    [(80,30,10),(139,60,20),(178,90,35),(210,130,60),(230,170,100),(200,140,80)],
                         (210,90,40), (30,10,5),   0),
@@ -151,6 +165,19 @@ jobs:
           os.makedirs("assets/audio/music",       exist_ok=True)
           os.makedirs("assets/audio/sfx",         exist_ok=True)
 
+          # Generate app icon (512x512 RGBA)
+          icon = Image.new("RGBA", (512, 512), (15, 15, 40, 255))
+          from PIL import ImageDraw
+          draw = ImageDraw.Draw(icon)
+          # Simple rocket silhouette
+          draw.ellipse([180, 80, 332, 280], fill=(60, 120, 220, 255))
+          draw.polygon([(256,40),(200,160),(312,160)], fill=(80,160,255,255))
+          draw.rectangle([220, 260, 292, 360], fill=(50,100,200,255))
+          draw.polygon([(200,340),(220,360),(220,400)], fill=(200,80,20,255))
+          draw.polygon([(292,340),(312,360),(312,400)], fill=(200,80,20,255))
+          icon.save("assets/icon.png")
+          print("Icon generated")
+
           for name, palette, horizon, zenith, seed in PLANETS:
               print(f"Texturing {name}...")
               albedo(2048, 2048, palette, seed).save(f"assets/textures/planets/{name}_albedo.png")
@@ -159,7 +186,6 @@ jobs:
               albedo(512,  512,  palette, seed+200).save(f"assets/textures/planets/{name}_emissive.png")
               skybox(4096, 2048, horizon, zenith, seed).save(f"assets/textures/skybox/{name}_sky.png")
 
-          # 12 tiling detail textures (rock, ice, lava, sand, metal, dust x2 each)
           detail_palettes = [
             [(60,45,30),(100,80,55),(140,115,80),(180,150,110)],
             [(180,190,210),(200,210,225),(220,225,235),(240,245,250)],
@@ -178,7 +204,6 @@ jobs:
               albedo(2048, 2048, pal, seed=i+20).save(f"assets/textures/detail/tile_{i:02d}.png")
               print(f"Detail tile {i:02d} done")
 
-          # === Audio generation ===
           SR = 44100
           def gen_wav(path, secs, base_hz, chord=None, seed=0):
               rng = np.random.RandomState(seed)
@@ -187,13 +212,10 @@ jobs:
               sig = np.zeros(n)
               freqs = chord if chord else [base_hz]
               for i, f in enumerate(freqs):
-                  # Harmonics
                   for h in [1, 2, 3, 4]:
                       sig += np.sin(2 * np.pi * f * h * t) * (0.15 / h)
-                  # LFO modulation for ambience
                   lfo = 0.5 + 0.5 * np.sin(2 * np.pi * 0.1 * t + i)
                   sig *= lfo
-              # Pad / reverb simulation
               sig += rng.randn(n) * 0.008
               sig = np.clip(sig / max(1.0, np.max(np.abs(sig))) * 0.9, -1.0, 1.0)
               pcm = (sig * 32767).astype(np.int16)
@@ -210,25 +232,25 @@ jobs:
           ]
           for name, secs, hz, chord in MUSIC:
               print(f"Audio: {name}_theme.wav ({secs}s)...")
-              gen_wav(f"assets/audio/music/{name}_theme.wav", secs, hz, chord, seed=PLANETS[[p[0] for p in PLANETS].index(name)][4])
+              gen_wav(f"assets/audio/music/{name}_theme.wav", secs, hz, chord,
+                      seed=PLANETS[[p[0] for p in PLANETS].index(name)][4])
 
           SFX = [
-            ("footstep",   0.35, 320, [320,480]),
-            ("footstep_2", 0.35, 280, [280,420]),
-            ("pickup",     0.45, 880, [880,1100,1320]),
-            ("build",      0.70, 220, [220,330,440]),
-            ("build_done", 0.80, 440, [440,550,660,880]),
-            ("error",      0.40, 180, [180,200]),
-            ("success",    0.60, 660, [660,880,990]),
-            ("menu_click", 0.18, 600, [600,750]),
-            ("oxygen_low", 1.20, 160, [160,180,200]),
-            ("explosion",  1.50,  80, [ 80,100,120,160]),
-            ("ambient_wind",6.0,  60, [ 60, 90, 45]),
-            ("ambient_wind2",6.0, 55, [ 55, 82, 41]),
-            ("mine",       0.55, 240, [240,300,360]),
-            ("travel",     2.00, 130, [130,195,260,390]),
-            ("upgrade",    0.70, 550, [550,660,770,880,1100]),
-            ("death",      2.00,  90, [ 90,100,80]),
+            ("footstep",    0.35, 320, [320,480]),
+            ("footstep_2",  0.35, 280, [280,420]),
+            ("pickup",      0.45, 880, [880,1100,1320]),
+            ("build",       0.70, 220, [220,330,440]),
+            ("build_done",  0.80, 440, [440,550,660,880]),
+            ("error",       0.40, 180, [180,200]),
+            ("success",     0.60, 660, [660,880,990]),
+            ("menu_click",  0.18, 600, [600,750]),
+            ("oxygen_low",  1.20, 160, [160,180,200]),
+            ("explosion",   1.50,  80, [ 80,100,120,160]),
+            ("ambient_wind",6.00,  60, [ 60, 90, 45]),
+            ("mine",        0.55, 240, [240,300,360]),
+            ("travel",      2.00, 130, [130,195,260,390]),
+            ("upgrade",     0.70, 550, [550,660,770,880,1100]),
+            ("death",       2.00,  90, [ 90,100,80]),
           ]
           for name, secs, hz, chord in SFX:
               gen_wav(f"assets/audio/sfx/{name}.wav", secs, hz, chord)
@@ -239,10 +261,6 @@ jobs:
           print("Asset size:", result.stdout.strip())
           PYEOF
 
-      - name: Update export_presets.cfg
-        run: |
-          sed -i "s|gradle_build/use_gradle_build=true|gradle_build/use_gradle_build=false|g" export_presets.cfg || true
-
       - name: Import project
         run: |
           timeout 180 godot --headless --import 2>&1 | tail -20 || true
@@ -251,20 +269,58 @@ jobs:
       - name: Create output directory
         run: mkdir -p build
 
-      - name: Export APK
+      - name: Export APK (debug)
         run: |
-          godot --headless --export-debug "Android" build/stellar-base.apk 2>&1
+          godot --headless --export-debug "Android" build/stellar-base-unsigned.apk 2>&1
           echo "Export exit code: $?"
+          ls -lah build/ || echo "build/ empty"
+
+      - name: Align and sign APK
+        run: |
+          ZIPALIGN="${ANDROID_SDK_ROOT}/build-tools/34.0.0/zipalign"
+          APKSIGNER="${ANDROID_SDK_ROOT}/build-tools/34.0.0/apksigner"
+
+          # Prefer the exported APK; look everywhere if not at expected path
+          RAW_APK=$(find build -name "*.apk" | head -1)
+          if [ -z "$RAW_APK" ]; then
+            RAW_APK=$(find . -name "*.apk" ! -path "./debug.keystore" | head -1)
+          fi
+
+          if [ -z "$RAW_APK" ]; then
+            echo "ERROR: No APK found to sign!"
+            exit 1
+          fi
+
+          echo "Signing: $RAW_APK"
+
+          # zipalign — required before signing
+          $ZIPALIGN -v -p 4 "$RAW_APK" build/stellar-base-aligned.apk 2>&1 | tail -5 || true
+
+          # Sign with debug keystore
+          $APKSIGNER sign \
+            --ks debug.keystore \
+            --ks-pass pass:android \
+            --key-pass pass:android \
+            --ks-key-alias androiddebugkey \
+            --out build/stellar-base.apk \
+            build/stellar-base-aligned.apk
+
+          echo "Signing complete"
+          $APKSIGNER verify --verbose build/stellar-base.apk | head -10
+
+          # Clean up intermediate files
+          rm -f build/stellar-base-unsigned.apk build/stellar-base-aligned.apk
 
       - name: Verify output
         run: |
-          ls -lah build/ 2>/dev/null || echo "build/ empty"
-          find . -name "*.apk" | xargs ls -lah 2>/dev/null | head -5
+          echo "=== Final APK ==="
+          ls -lah build/*.apk 2>/dev/null || echo "No APK in build/"
+          find . -name "*.apk" ! -name "*unsigned*" ! -name "*aligned*" | xargs ls -lah 2>/dev/null
 
-      - name: Upload APK
+      - name: Upload signed APK
         uses: actions/upload-artifact@v4
         with:
           name: stellar-base-apk
-          path: build/*.apk
-          if-no-files-found: warn
+          path: build/stellar-base.apk
+          if-no-files-found: error
           retention-days: 30
