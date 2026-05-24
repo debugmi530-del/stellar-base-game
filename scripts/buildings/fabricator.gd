@@ -1,31 +1,18 @@
 extends StaticBody3D
 
-var craft_interval: float = 10.0
-var timer: float = 0.0
-var active: bool = true
+const CONVERT_INTERVAL: float = 10.0
+var _timer: float = 0.0
 
-const AUTO_RECIPES = [
-	{"cost": {"iron": 5, "silicon": 3}, "gives": {"titanium": 2}},
-	{"cost": {"silicon": 10, "energy": 20}, "gives": {"crystal": 1}},
-]
-
-var current_recipe: int = 0
-
-func _process(delta):
-	if not active:
+func _process(delta: float):
+	if GameManager.upgrades.get("auto_fabricator", 0) < 1:
 		return
-	timer += delta
-	if timer >= craft_interval:
-		timer = 0.0
-		_auto_craft()
+	_timer += delta
+	if _timer >= CONVERT_INTERVAL:
+		_timer = 0.0
+		_convert()
 
-func _auto_craft():
-	var recipe = AUTO_RECIPES[current_recipe]
-	if GameManager.can_afford(recipe["cost"]):
-		GameManager.spend_resources(recipe["cost"])
-		for res in recipe["gives"]:
-			GameManager.add_resource(res, recipe["gives"][res])
-
-func interact(_player):
-	current_recipe = (current_recipe + 1) % AUTO_RECIPES.size()
-	active = !active
+func _convert():
+	# iron + silicon → titanium
+	var cost = {"iron": 20, "silicon": 15}
+	if GameManager.spend_resources(cost):
+		GameManager.add_resource("titanium", 5.0)
