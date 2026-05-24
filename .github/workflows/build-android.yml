@@ -24,10 +24,10 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android platform tools
+      - name: Install Android components
         run: |
-          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;25.2.9519653" 2>/dev/null
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/25.2.9519653" >> $GITHUB_ENV
+          sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0" "ndk;25.2.9519653" 2>/dev/null || true
+          echo "ANDROID_NDK_HOME=${ANDROID_SDK_ROOT}/ndk/25.2.9519653" >> $GITHUB_ENV
 
       - name: Download Godot 4.3
         run: |
@@ -39,44 +39,37 @@ jobs:
 
       - name: Download export templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/4.3.stable
+          mkdir -p "$HOME/.local/share/godot/export_templates/4.3.stable"
           wget -q "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz" -O templates.tpz
           unzip -q templates.tpz
-          cp templates/android_debug.apk ~/.local/share/godot/export_templates/4.3.stable/
-          cp templates/android_release.apk ~/.local/share/godot/export_templates/4.3.stable/
-          echo "Templates ready"
+          cp templates/android_debug.apk "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          cp templates/android_release.apk "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          ls "$HOME/.local/share/godot/export_templates/4.3.stable/"
 
-      - name: Configure Godot Android settings
+      - name: Configure Godot editor settings
         run: |
-          mkdir -p ~/.config/godot
-          cat > ~/.config/godot/editor_settings-4.tres << 'SETTINGS'
-[gd_resource type="EditorSettings" format=3]
-[resource]
-export/android/android_sdk_path = "/usr/local/lib/android/sdk"
-SETTINGS
+          mkdir -p "$HOME/.config/godot"
+          printf '[gd_resource type="EditorSettings" format=3]\n[resource]\nexport/android/android_sdk_path = "%s"\n' "${ANDROID_SDK_ROOT}" > "$HOME/.config/godot/editor_settings-4.tres"
+          cat "$HOME/.config/godot/editor_settings-4.tres"
 
-      - name: Setup Godot Android build
+      - name: Import project assets
         run: |
-          mkdir -p android/build
-          godot --headless --android-build-directory android/build 2>&1 || true
+          timeout 120 godot --headless --import 2>&1 | tail -10 || true
+          echo "Import step done"
 
-      - name: Import project
-        run: |
-          timeout 120 godot --headless --import 2>&1 | tail -5 || true
-
-      - name: Create output directory
+      - name: Create build directory
         run: mkdir -p build
 
       - name: Export debug APK
         run: |
           godot --headless --export-debug "Android" build/stellar-base-debug.apk 2>&1
+          echo "Export step done"
 
-      - name: List build output
+      - name: Check APK output
         run: |
-          echo "=== Build output ==="
-          find build/ -name "*.apk" -exec ls -lah {} \; 2>/dev/null || echo "No APK files found"
+          find build/ -name "*.apk" 2>/dev/null && ls -lah build/*.apk || echo "No APK produced"
 
-      - name: Upload APK
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: stellar-base-apk
