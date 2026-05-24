@@ -1,13 +1,13 @@
 extends CharacterBody3D
 
-const WALK_SPEED   = 5.0
-const SPRINT_SPEED = 8.0
+const WALK_SPEED    = 5.0
+const SPRINT_SPEED  = 8.0
 const JUMP_VELOCITY = 4.5
-const GRAVITY      = 18.0
+const GRAVITY       = 18.0
 
-@onready var camera: Camera3D          = $Head/Camera3D
-@onready var head: Node3D              = $Head
-@onready var interaction_ray: RayCast3D = $Head/Camera3D/InteractionRay
+@onready var camera: Camera3D               = $Head/Camera3D
+@onready var head: Node3D                   = $Head
+@onready var interaction_ray: RayCast3D     = $Head/Camera3D/InteractionRay
 @onready var footstep_player: AudioStreamPlayer3D = $FootstepPlayer
 
 var current_speed: float  = WALK_SPEED
@@ -19,7 +19,6 @@ var look_x: float         = 0.0
 var look_y: float         = 0.0
 var build_mode: bool      = false
 
-# Оптимизация: троттлинг тяжёлых операций
 var _interact_cooldown: float = 0.0
 var _oxygen_tick: float       = 0.0
 
@@ -27,23 +26,25 @@ signal oxygen_changed(value)
 signal entered_base
 signal exited_base
 
+# BUGFIX: кэшируем флаг мобильного устройства — убирает лишние OS.has_feature() вызовы
+var _is_mobile: bool = false
+
 func _ready():
-	Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+	_is_mobile = OS.has_feature("android") or OS.has_feature("mobile")
+	# BUGFIX: на Android MOUSE_MODE_CAPTURED игнорируется системой — не вызываем
+	if not _is_mobile:
+		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 	oxygen = 100.0
-	# Добавить камеру в группу для PerformanceManager
 	camera.add_to_group("player_camera")
-	# Применить дистанцию видимости из настроек качества
 	var preset = PerformanceManager.get_preset()
 	camera.far = preset.get("view_distance", 60.0)
 
 func _physics_process(delta):
-	# Ограничить физику до 30 тиков/с для слабых устройств
 	_handle_gravity(delta)
 	_handle_movement(delta)
 	_handle_footsteps(delta)
 	move_and_slide()
 
-	# Кислород — обновлять раз в 0.1с (экономия CPU)
 	_oxygen_tick += delta
 	if _oxygen_tick >= 0.1:
 		_handle_oxygen(_oxygen_tick)
@@ -57,11 +58,11 @@ func _handle_gravity(delta):
 		velocity.y -= GRAVITY * delta
 
 func _handle_movement(delta):
-	var speed_mult  = 1.0 + (GameManager.upgrades.get("suit_speed", 1) - 1) * 0.2
-	is_sprinting    = Input.is_action_pressed("sprint") and not build_mode
-	current_speed   = (SPRINT_SPEED if is_sprinting else WALK_SPEED) * speed_mult
+	var speed_mult = 1.0 + (GameManager.upgrades.get("suit_speed", 1) - 1) * 0.2
+	is_sprinting   = Input.is_action_pressed("sprint") and not build_mode
+	current_speed  = (SPRINT_SPEED if is_sprinting else WALK_SPEED) * speed_mult
 
-	var input_dir = Input.get_vector("move_left","move_right","move_forward","move_back")
+	var input_dir = Input.get_vector("move_left", "move_right", "move_forward", "move_back")
 	var direction = (head.transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
 
 	if direction:
@@ -103,19 +104,21 @@ func _die():
 	get_tree().change_scene_to_file("res://scenes/death_screen.tscn")
 
 func _input(event):
-	if event is InputEventMouseMotion \
-	   and Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED:
+	# BUGFIX: на Android get_mouse_mode() никогда не возвращает CAPTURED
+	# — разрешаем MouseMotion всегда на мобиле (touch симулирует его через mobile_input.gd)
+	if event is InputEventMouseMotion and (
+			Input.get_mouse_mode() == Input.MOUSE_MODE_CAPTURED or _is_mobile):
 		var sens   = GameManager.settings.get("sensitivity", 0.3)
 		var invert = GameManager.settings.get("invert_y", false)
 		look_y -= event.relative.x * sens * 0.1
 		look_x -= event.relative.y * sens * 0.1 * (-1.0 if invert else 1.0)
 		look_x = clamp(look_x, -1.4, 1.4)
-		head.rotation.y  = look_y
+		head.rotation.y   = look_y
 		camera.rotation.x = look_x
 
 	if event.is_action_pressed("interact") and _interact_cooldown <= 0.0:
 		_try_interact()
-		_interact_cooldown = 0.3   # не чаще раза в 0.3с
+		_interact_cooldown = 0.3
 
 	if event.is_action_pressed("ui_cancel"):
 		if build_mode:
@@ -132,15 +135,17 @@ func _try_interact():
 			obj.interact(self)
 
 func toggle_build_mode():
-	build_mode = !build_mode
+	build_mode = not build_mode
 	var build_ui = get_node_or_null("../UI/HUD/BuildMenu")
 	if build_ui:
 		build_ui.visible = build_mode
-	Input.set_mouse_mode(
-		Input.MOUSE_MODE_VISIBLE if build_mode else Input.MOUSE_MODE_CAPTURED
-	)
+	# BUGFIX: на мобиле не трогаем mouse_mode — управление только через touch
+	if not _is_mobile:
+		Input.set_mouse_mode(
+			Input.MOUSE_MODE_VISIBLE if build_mode else Input.MOUSE_MODE_CAPTURED
+		)
 
 func set_in_base(value: bool):
 	in_base = value
 	if value: entered_base.emit()
-	else:     exited_base.emit()
+	else:      exited_base.emit()
