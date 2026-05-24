@@ -19,7 +19,13 @@ func _ready():
 
 func _apply_volumes():
 	var mv = GameManager.settings.get("music_volume", 0.8)
-	AudioServer.set_bus_volume_db(AudioServer.get_bus_index("Music"), linear_to_db(mv))
+	var music_bus = AudioServer.get_bus_index("Music")
+	if music_bus >= 0:
+		AudioServer.set_bus_volume_db(music_bus, linear_to_db(mv))
+	var sfx_bus = AudioServer.get_bus_index("SFX")
+	if sfx_bus >= 0:
+		var sv = GameManager.settings.get("sfx_volume", 1.0)
+		AudioServer.set_bus_volume_db(sfx_bus, linear_to_db(sv))
 
 func play_planet_music(planet_id: int):
 	if planet_id == current_planet:
@@ -28,16 +34,20 @@ func play_planet_music(planet_id: int):
 	var track_path = MUSIC_TRACKS.get(planet_id, "")
 	if track_path != "" and ResourceLoader.exists(track_path):
 		var stream = load(track_path)
-		music_player.stream = stream
-		music_player.play()
+		if music_player:
+			music_player.stream = stream
+			music_player.play()
 
 func _on_planet_changed(planet_id: int):
 	play_planet_music(planet_id)
 
-func play_sfx(stream: AudioStream, position: Vector3 = Vector3.ZERO):
+func play_sfx(stream: AudioStream, pos: Vector3 = Vector3.ZERO):
+	if stream == null:
+		return
 	var player = AudioStreamPlayer3D.new()
 	get_tree().current_scene.add_child(player)
+	# Set position AFTER adding to scene tree
+	player.global_position = pos
 	player.stream = stream
-	player.global_position = position
 	player.play()
 	player.finished.connect(player.queue_free)
