@@ -26,7 +26,8 @@ func _ready():
 	# Основная панель
 	var panel = PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.custom_minimum_size = Vector2(480, 520)
+	var _vh = get_viewport().get_visible_rect().size.y
+	panel.custom_minimum_size = Vector2(480, min(420.0, _vh * 0.82))
 	add_child(panel)
 
 	var vbox = VBoxContainer.new()
