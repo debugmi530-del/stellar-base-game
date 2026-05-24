@@ -87,7 +87,7 @@ func start_build(item_type: String, parent: Node3D):
 	if not BUILDABLES.has(item_type):
 		return
 	selected_item = item_type
-	build_active = true
+	build_active  = true
 	if preview_object:
 		preview_object.queue_free()
 	var scene = load(BUILDABLES[item_type]["scene"])
@@ -105,14 +105,10 @@ func _set_preview_material(node: Node3D):
 			child.material_override = mat
 		_set_preview_material(child)
 
-func update_preview(hit_position: Vector3, hit_normal: Vector3):
+func update_preview(hit_position: Vector3, _hit_normal: Vector3):
 	if not preview_object or not build_active:
 		return
-	var snapped = Vector3(
-		snapped(hit_position.x, grid_snap),
-		hit_position.y,
-		snapped(hit_position.z, grid_snap)
-	)
+	var snapped = _snap(hit_position)
 	preview_object.global_position = snapped
 	var can_afford = GameManager.can_afford(BUILDABLES[selected_item]["cost"])
 	_set_preview_valid(preview_object, can_afford)
@@ -129,18 +125,19 @@ func place_building(hit_position: Vector3) -> bool:
 	var cost = BUILDABLES[selected_item]["cost"]
 	if not GameManager.spend_resources(cost):
 		return false
-	var snapped = Vector3(
-		snapped(hit_position.x, grid_snap),
-		hit_position.y,
-		snapped(hit_position.z, grid_snap)
-	)
+	var snapped = _snap(hit_position)
 	var scene = load(BUILDABLES[selected_item]["scene"])
 	if scene:
 		var building = scene.instantiate()
-		get_tree().current_scene.add_child(building)
+		# BUGFIX: размещаем в BuildingRoot чтобы planet_world мог восстановить из сохранения
+		var building_root = get_tree().current_scene.get_node_or_null("BuildingRoot")
+		if building_root:
+			building_root.add_child(building)
+		else:
+			get_tree().current_scene.add_child(building)
 		building.global_position = snapped
 		GameManager.placed_objects.append({
-			"type": selected_item,
+			"type":     selected_item,
 			"position": {"x": snapped.x, "y": snapped.y, "z": snapped.z}
 		})
 		GameManager.save_game()
@@ -149,8 +146,15 @@ func place_building(hit_position: Vector3) -> bool:
 	return false
 
 func cancel_build():
-	build_active = false
+	build_active  = false
 	selected_item = ""
 	if preview_object:
 		preview_object.queue_free()
 		preview_object = null
+
+func _snap(pos: Vector3) -> Vector3:
+	return Vector3(
+		snapped(pos.x, grid_snap),
+		pos.y,
+		snapped(pos.z, grid_snap)
+	)
