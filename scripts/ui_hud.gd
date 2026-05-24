@@ -42,6 +42,10 @@ func _ready():
 	travel_screen    = get_node_or_null("../TravelScreen")
 	upgrade_screen   = get_node_or_null("../UpgradeScreen")
 	inventory_screen = get_node_or_null("../InventoryScreen")
+	# BUGFIX: подключаем сигнал oxygen_changed от Player — без этого шкала O2 не обновляется
+	var player = get_tree().current_scene.get_node_or_null("Player")
+	if player:
+		player.oxygen_changed.connect(update_oxygen)
 
 func _build_ui():
 	# ── ВЕРХНЯЯ ПАНЕЛЬ ──────────────────────────────────────────
