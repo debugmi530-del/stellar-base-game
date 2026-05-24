@@ -1,0 +1,33 @@
+[gd_scene load_steps=1 format=3 uid="uid://death_screen"]
+
+[node name="DeathScreen" type="Control"]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Background" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.1, 0, 0, 0.8)
+
+[node name="CenterContainer" type="CenterContainer" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
+theme_override_constants/separation = 20
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+text = "КИСЛОРОД ЗАКОНЧИЛСЯ"
+horizontal_alignment = 1
+
+[node name="SubLabel" type="Label" parent="CenterContainer/VBoxContainer"]
+text = "Шепард погиб в открытом космосе"
+horizontal_alignment = 1
+
+[node name="RespawnBtn" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 60)
+text = "Возродиться"
+
+[node name="MenuBtn" type="Button" parent="CenterContainer/VBoxContainer"]
+custom_minimum_size = Vector2(280, 60)
+text = "Главное меню"
