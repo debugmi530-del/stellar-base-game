@@ -1,30 +1,29 @@
 extends StaticBody3D
 
-var mine_interval: float = 5.0
-var timer: float = 0.0
-var resource_type: String = "iron"
-var amount_per_cycle: float = 15.0
+const MINE_INTERVAL: float = 5.0
+const MINE_RADIUS: float   = 4.0
 
-@onready var particles: GPUParticles3D = $Particles
-@onready var anim: AnimationPlayer = $AnimationPlayer
+var _timer: float = 0.0
 
-func _ready():
-	amount_per_cycle = 15.0 * GameManager.upgrades.get("auto_miner", 1)
-	if anim:
-		anim.play("working")
+func _process(delta: float):
+	if GameManager.upgrades.get("auto_miner", 0) < 1:
+		return
+	_timer += delta
+	if _timer >= MINE_INTERVAL:
+		_timer = 0.0
+		_do_mine()
 
-func _process(delta):
-	timer += delta
-	if timer >= mine_interval:
-		timer = 0.0
-		_mine()
-
-func _mine():
-	GameManager.add_resource(resource_type, amount_per_cycle)
-	if particles:
-		particles.emitting = true
-
-func interact(_player):
-	var types = ["iron", "silicon", "titanium", "crystal"]
-	var idx = types.find(resource_type)
-	resource_type = types[(idx + 1) % types.size()]
+func _do_mine():
+	var space = get_world_3d().direct_space_state
+	var query  = PhysicsShapeQueryParameters3D.new()
+	var sphere = SphereShape3D.new()
+	sphere.radius = MINE_RADIUS
+	query.shape         = sphere
+	query.transform     = global_transform
+	query.collision_mask = 1
+	var results = space.intersect_shape(query)
+	for r in results:
+		var body = r.get("collider")
+		if body and body.has_method("interact"):
+			body.interact(null)
+			break
