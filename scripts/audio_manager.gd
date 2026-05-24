@@ -1,9 +1,12 @@
 extends Node
 
-@onready var music_player:   AudioStreamPlayer = $MusicPlayer
-@onready var ambient_player: AudioStreamPlayer = $AmbientPlayer
+# AudioManager — autoload синглтон.
+# НЕ используем @onready/$Node — autoload создаётся без дочерних нод из сцены.
+# Создаём AudioStreamPlayer-ы программно в _ready().
 
-# Используем сгенерированные WAV файлы
+var music_player:   AudioStreamPlayer = null
+var ambient_player: AudioStreamPlayer = null
+
 const MUSIC_TRACKS = {
 	0: "res://assets/audio/music/mars_theme.wav",
 	1: "res://assets/audio/music/europa_theme.wav",
@@ -29,11 +32,21 @@ const SFX_PATHS = {
 	"ambient_wind":"res://assets/audio/sfx/ambient_wind.wav"
 }
 
-# Кэш загруженных SFX
 var _sfx_cache: Dictionary = {}
 var current_planet: int = -1
 
 func _ready():
+	# Создаём плееры программно — работает и как autoload, и в сцене
+	music_player = AudioStreamPlayer.new()
+	music_player.name = "MusicPlayer"
+	music_player.bus  = "Music"
+	add_child(music_player)
+
+	ambient_player = AudioStreamPlayer.new()
+	ambient_player.name = "AmbientPlayer"
+	ambient_player.bus  = "Ambient"
+	add_child(ambient_player)
+
 	GameManager.planet_changed.connect(_on_planet_changed)
 	_apply_volumes()
 	play_planet_music(GameManager.current_planet)
@@ -41,8 +54,8 @@ func _ready():
 func _apply_volumes():
 	var mv = GameManager.settings.get("music_volume", 0.8)
 	var sv = GameManager.settings.get("sfx_volume",   1.0)
-	_set_bus_volume("Music", mv)
-	_set_bus_volume("SFX",   sv)
+	_set_bus_volume("Music",  mv)
+	_set_bus_volume("SFX",    sv)
 
 func _set_bus_volume(bus_name: String, linear: float):
 	var idx = AudioServer.get_bus_index(bus_name)
@@ -55,14 +68,12 @@ func play_planet_music(planet_id: int):
 	current_planet = planet_id
 	var path = MUSIC_TRACKS.get(planet_id, "")
 	if path != "" and ResourceLoader.exists(path):
-		if music_player:
-			music_player.stream = load(path)
-			music_player.play()
+		music_player.stream = load(path)
+		music_player.play()
 
 func _on_planet_changed(planet_id: int):
 	play_planet_music(planet_id)
 
-# Воспроизвести SFX по имени (с кэшированием)
 func play_sfx_named(sfx_name: String):
 	var path = SFX_PATHS.get(sfx_name, "")
 	if path == "":
@@ -74,13 +85,12 @@ func play_sfx_named(sfx_name: String):
 			return
 	_play_stream_2d(_sfx_cache[sfx_name])
 
-# Воспроизвести AudioStream в 3D пространстве
 func play_sfx(stream: AudioStream, pos: Vector3 = Vector3.ZERO):
-	if stream == null:
+	if stream == null or not get_tree():
 		return
 	var player = AudioStreamPlayer3D.new()
 	get_tree().current_scene.add_child(player)
-	player.global_position = pos   # после add_child
+	player.global_position = pos
 	player.stream = stream
 	player.play()
 	player.finished.connect(player.queue_free)
@@ -91,6 +101,6 @@ func _play_stream_2d(stream: AudioStream):
 	var player = AudioStreamPlayer.new()
 	add_child(player)
 	player.stream = stream
-	player.bus = "SFX"
+	player.bus    = "SFX"
 	player.play()
 	player.finished.connect(player.queue_free)
