@@ -1,26 +1,16 @@
 extends StaticBody3D
 
-var o2_per_second: float = 3.0
-var power_needed: float = 2.0
-var in_base_zone: bool = true
-
-@onready var area: Area3D = $OxygenZone
+const OXYGEN_PER_SECOND: float = 1.5
+const ZONE_RADIUS: float       = 8.0
 
 func _ready():
-	o2_per_second = 3.0 * GameManager.upgrades.get("base_power", 1)
-	if area:
-		area.body_entered.connect(_on_body_entered)
-		area.body_exited.connect(_on_body_exited)
+	var zone = get_node_or_null("OxygenZone")
+	if zone and zone.get_child_count() == 0:
+		var shape = SphereShape3D.new()
+		shape.radius = ZONE_RADIUS
+		var cs = CollisionShape3D.new()
+		cs.shape = shape
+		zone.add_child(cs)
 
-func _process(delta):
-	if GameManager.resources.get("energy", 0) >= power_needed * delta:
-		GameManager.resources["energy"] -= power_needed * delta
-		# Oxygenate area - handled by player proximity check
-
-func _on_body_entered(body):
-	if body.has_method("set_in_base"):
-		body.set_in_base(true)
-
-func _on_body_exited(body):
-	if body.has_method("set_in_base"):
-		body.set_in_base(false)
+func get_oxygen_contribution() -> float:
+	return OXYGEN_PER_SECOND * float(GameManager.upgrades.get("base_power", 1))
