@@ -1,5 +1,6 @@
 extends Node
 
+# BUGFIX: константа пути используется и здесь, и в main_menu.gd
 const SAVE_PATH = "user://savegame.json"
 
 var current_planet: int = 0
@@ -16,16 +17,16 @@ var upgrades: Dictionary = {
 }
 
 var upgrade_costs: Dictionary = {
-	"suit_oxygen":    {"oxygen": 50, "silicon": 30},
-	"suit_speed":     {"iron": 40, "energy": 60},
-	"suit_jump":      {"titanium": 20, "energy": 50},
-	"base_power":     {"silicon": 80, "iron": 60},
-	"base_storage":   {"iron": 100, "titanium": 30},
-	"auto_miner":     {"iron": 150, "titanium": 50, "silicon": 80},
-	"auto_fabricator":{"titanium": 100, "crystal": 20, "silicon": 120},
-	"auto_solar":     {"silicon": 200, "crystal": 50},
-	"ship_fuel":      {"iron": 80, "energy": 100},
-	"scanner":        {"silicon": 60, "crystal": 30}
+	"suit_oxygen":     {"oxygen": 50, "silicon": 30},
+	"suit_speed":      {"iron": 40, "energy": 60},
+	"suit_jump":       {"titanium": 20, "energy": 50},
+	"base_power":      {"silicon": 80, "iron": 60},
+	"base_storage":    {"iron": 100, "titanium": 30},
+	"auto_miner":      {"iron": 150, "titanium": 50, "silicon": 80},
+	"auto_fabricator": {"titanium": 100, "crystal": 20, "silicon": 120},
+	"auto_solar":      {"silicon": 200, "crystal": 50},
+	"ship_fuel":       {"iron": 80, "energy": 100},
+	"scanner":         {"silicon": 60, "crystal": 30}
 }
 
 var placed_objects: Array = []
@@ -33,7 +34,8 @@ var planets_visited: Array = [true, false, false, false]
 var play_time: float = 0.0
 var settings: Dictionary = {
 	"music_volume": 0.8, "sfx_volume": 1.0,
-	"graphics_quality": 1, "invert_y": false, "sensitivity": 0.3
+	# BUGFIX: было 1 (Medium) — по умолчанию LOW (0) для слабых Android устройств
+	"graphics_quality": 0, "invert_y": false, "sensitivity": 0.3
 }
 
 signal resources_changed
@@ -48,15 +50,19 @@ func _process(delta):
 	_tick_automation(delta)
 
 func _tick_automation(delta: float):
+	# BUGFIX: один emit в конце вместо нескольких
+	var any_changed = false
 	if upgrades["auto_miner"] > 0:
 		var rate = upgrades["auto_miner"] * 0.5 * delta
-		resources["iron"] = resources.get("iron", 0.0) + rate
+		resources["iron"]    = resources.get("iron",    0.0) + rate
 		resources["silicon"] = resources.get("silicon", 0.0) + rate * 0.6
-		resources_changed.emit()
+		any_changed = true
 	if upgrades["auto_solar"] > 0:
-		var cap = 500.0 + upgrades["base_storage"] * 200.0
+		var cap  = 500.0 + upgrades["base_storage"] * 200.0
 		var rate = upgrades["auto_solar"] * 2.0 * delta
 		resources["energy"] = min(resources.get("energy", 0.0) + rate, cap)
+		any_changed = true
+	if any_changed:
 		resources_changed.emit()
 
 func add_resource(type: String, amount: float):
@@ -102,13 +108,13 @@ func travel_to_planet(planet_id: int):
 
 func save_game():
 	var data = {
-		"resources": resources.duplicate(),
-		"upgrades": upgrades.duplicate(),
+		"resources":      resources.duplicate(),
+		"upgrades":       upgrades.duplicate(),
 		"placed_objects": placed_objects.duplicate(true),
-		"planets_visited": planets_visited.duplicate(),
+		"planets_visited":planets_visited.duplicate(),
 		"current_planet": current_planet,
-		"play_time": play_time,
-		"settings": settings.duplicate()
+		"play_time":      play_time,
+		"settings":       settings.duplicate()
 	}
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file:
@@ -125,19 +131,23 @@ func load_game():
 	file.close()
 	var data = JSON.parse_string(text)
 	if data is Dictionary:
-		if data.has("resources"):      resources      = data["resources"]
-		if data.has("upgrades"):       upgrades       = data["upgrades"]
-		if data.has("placed_objects"): placed_objects = data["placed_objects"]
-		if data.has("planets_visited"):planets_visited= data["planets_visited"]
-		if data.has("current_planet"): current_planet = data["current_planet"]
-		if data.has("play_time"):      play_time      = data["play_time"]
-		if data.has("settings"):       settings       = data["settings"]
+		if data.has("resources"):       resources       = data["resources"]
+		if data.has("upgrades"):        upgrades        = data["upgrades"]
+		if data.has("placed_objects"):  placed_objects  = data["placed_objects"]
+		if data.has("planets_visited"): planets_visited = data["planets_visited"]
+		if data.has("current_planet"):  current_planet  = data["current_planet"]
+		if data.has("play_time"):       play_time       = data["play_time"]
+		if data.has("settings"):
+			# Мержим, чтобы новые ключи не пропали
+			for k in data["settings"]:
+				settings[k] = data["settings"][k]
 
 func reset_game():
-	resources      = {"iron":100,"silicon":50,"energy":200,"oxygen":100,"water":80,"titanium":20,"crystal":0}
-	upgrades       = {"suit_oxygen":1,"suit_speed":1,"suit_jump":1,"base_power":1,"base_storage":1,"auto_miner":0,"auto_fabricator":0,"auto_solar":0,"ship_fuel":1,"scanner":1}
-	placed_objects = []
-	planets_visited= [true, false, false, false]
-	current_planet = 0
-	play_time      = 0.0
+	resources       = {"iron":100,"silicon":50,"energy":200,"oxygen":100,"water":80,"titanium":20,"crystal":0}
+	upgrades        = {"suit_oxygen":1,"suit_speed":1,"suit_jump":1,"base_power":1,"base_storage":1,"auto_miner":0,"auto_fabricator":0,"auto_solar":0,"ship_fuel":1,"scanner":1}
+	placed_objects  = []
+	planets_visited = [true, false, false, false]
+	current_planet  = 0
+	play_time       = 0.0
+	settings        = {"music_volume":0.8,"sfx_volume":1.0,"graphics_quality":0,"invert_y":false,"sensitivity":0.3}
 	save_game()
