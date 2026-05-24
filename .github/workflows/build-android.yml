@@ -44,26 +44,33 @@ jobs:
           unzip -q templates.tpz
           cp templates/android_debug.apk "$HOME/.local/share/godot/export_templates/4.3.stable/"
           cp templates/android_release.apk "$HOME/.local/share/godot/export_templates/4.3.stable/"
+          cp templates/android_source.zip "$HOME/.local/share/godot/export_templates/4.3.stable/"
           ls "$HOME/.local/share/godot/export_templates/4.3.stable/"
 
       - name: Configure Godot editor settings
         run: |
           mkdir -p "$HOME/.config/godot"
           printf '[gd_resource type="EditorSettings" format=3]\n[resource]\nexport/android/android_sdk_path = "%s"\n' "${ANDROID_SDK_ROOT}" > "$HOME/.config/godot/editor_settings-4.tres"
-          cat "$HOME/.config/godot/editor_settings-4.tres"
+
+      - name: Install Godot Android build template
+        run: |
+          mkdir -p android/build
+          cp "$HOME/.local/share/godot/export_templates/4.3.stable/android_source.zip" android/build/
+          cd android/build && unzip -q android_source.zip && rm android_source.zip
+          echo "gdap_version=4.3.stable" > android/build/.gdignore || true
+          ls android/build/
 
       - name: Import project assets
         run: |
-          timeout 120 godot --headless --import 2>&1 | tail -10 || true
-          echo "Import step done"
+          timeout 120 godot --headless --import 2>&1 | tail -20 || true
 
-      - name: Create build directory
+      - name: Create output directory
         run: mkdir -p build
 
       - name: Export debug APK
         run: |
           godot --headless --export-debug "Android" build/stellar-base-debug.apk 2>&1
-          echo "Export step done"
+          echo "Exit code: $?"
 
       - name: Check APK output
         run: |
