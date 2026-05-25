@@ -11,7 +11,6 @@ const PLANETS = {
 		"fog_density":  0.015,
 		"albedo":       "res://assets/textures/planets/mars_albedo.png",
 		"normal":       "res://assets/textures/planets/mars_normal.png",
-		"skybox":       "res://assets/textures/skybox/mars_sky.png",
 		"description":  "Красная пустыня. Богата железом и кремнием."
 	},
 	1: {
@@ -24,7 +23,6 @@ const PLANETS = {
 		"fog_density":  0.03,
 		"albedo":       "res://assets/textures/planets/europa_albedo.png",
 		"normal":       "res://assets/textures/planets/europa_normal.png",
-		"skybox":       "res://assets/textures/skybox/europa_sky.png",
 		"description":  "Ледяной мир. Источник кристаллов и воды."
 	},
 	2: {
@@ -37,7 +35,6 @@ const PLANETS = {
 		"fog_density":  0.05,
 		"albedo":       "res://assets/textures/planets/io_albedo.png",
 		"normal":       "res://assets/textures/planets/io_normal.png",
-		"skybox":       "res://assets/textures/skybox/io_sky.png",
 		"description":  "Вулканический ад. Богат титаном и кристаллами."
 	},
 	3: {
@@ -50,7 +47,6 @@ const PLANETS = {
 		"fog_density":  0.07,
 		"albedo":       "res://assets/textures/planets/neptune_albedo.png",
 		"normal":       "res://assets/textures/planets/neptune_normal.png",
-		"skybox":       "res://assets/textures/skybox/neptune_sky.png",
 		"description":  "Высокая гравитация. Источник энергии и кристаллов."
 	}
 }
@@ -67,7 +63,6 @@ var _terrain_material: StandardMaterial3D = null
 func _ready():
 	GameManager.planet_changed.connect(_on_planet_changed)
 	setup_planet(GameManager.current_planet)
-	# BUGFIX: восстанавливаем постройки из сохранения после загрузки сцены
 	call_deferred("_restore_saved_buildings")
 
 func setup_planet(planet_id: int):
@@ -82,10 +77,8 @@ func setup_planet(planet_id: int):
 func _restore_saved_buildings():
 	if not building_root:
 		return
-	# Очищаем старые
 	for child in building_root.get_children():
 		child.queue_free()
-
 	for obj in GameManager.placed_objects:
 		var type_key = obj.get("type", "")
 		if not BuildSystem.BUILDABLES.has(type_key):
@@ -106,62 +99,90 @@ func _restore_saved_buildings():
 		building_root.add_child(building)
 
 # ---------- Sky ----------
+# BUGFIX: WorldEnvironment в .tscn не имеет Environment-ресурса →
+#         небо = чёрная пустота. Создаём Environment программно.
 func _setup_sky(data: Dictionary):
-	if not (sky and sky.environment):
+	if not sky:
 		return
+	# Создаём Environment если не задан в редакторе
+	if not sky.environment:
+		var env = Environment.new()
+		# Процедурное небо как база
+		var sky_mat = ProceduralSkyMaterial.new()
+		sky_mat.sky_top_color      = Color(0.02, 0.02, 0.06)
+		sky_mat.sky_horizon_color  = Color(0.15, 0.08, 0.04)
+		sky_mat.ground_horizon_color = Color(0.15, 0.08, 0.04)
+		sky_mat.ground_bottom_color  = Color(0.05, 0.03, 0.01)
+		var sky_res = Sky.new()
+		sky_res.sky_material = sky_mat
+		env.sky = sky_res
+		env.background_mode = Environment.BG_SKY
+		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+		env.ambient_light_energy = 0.6
+		# Туман для атмосферы
+		env.fog_enabled = false
+		sky.environment = env
+
 	var env = sky.environment
-	env.background_color    = data["sky_color"]
-	env.ambient_light_color = data["ambient_light"]
-	env.fog_density         = data["fog_density"]
-	env.fog_enabled         = true
-	env.background_mode     = Environment.BG_COLOR
+	# Красим небо цветом планеты
+	env.background_mode  = Environment.BG_COLOR
+	env.background_color = data["sky_color"]
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color  = data["ambient_light"]
+	env.ambient_light_energy = 0.7
+	env.fog_enabled  = data.get("fog_density", 0.0) > 0.005
+	env.fog_density  = data.get("fog_density", 0.01)
 
 # ---------- Lighting ----------
 func _setup_lighting(data: Dictionary):
 	if directional_light:
-		directional_light.light_color = data["ambient_light"]
+		directional_light.light_color   = data["ambient_light"]
+		directional_light.light_energy  = 1.2
 		var preset = PerformanceManager.get_preset()
 		directional_light.shadow_enabled = preset.get("shadow_enabled", false)
 
 # ---------- Terrain ----------
 func _setup_terrain(data: Dictionary):
+	_terrain_material = StandardMaterial3D.new()
 	var albedo_path = data.get("albedo", "")
 	if albedo_path != "" and ResourceLoader.exists(albedo_path):
-		if not _terrain_material:
-			_terrain_material = StandardMaterial3D.new()
 		_terrain_material.albedo_texture = load(albedo_path)
 		var normal_path = data.get("normal", "")
 		if normal_path != "" and ResourceLoader.exists(normal_path):
 			_terrain_material.normal_enabled = true
 			_terrain_material.normal_texture  = load(normal_path)
-		_apply_material_to_terrain(_terrain_material)
 	else:
-		if not _terrain_material:
-			_terrain_material = StandardMaterial3D.new()
+		# BUGFIX: задаём цвет напрямую — текстуры ещё не добавлены в проект
 		_terrain_material.albedo_color = data["ground_color"]
-		_apply_material_to_terrain(_terrain_material)
+	# BUGFIX: _apply_material_to_terrain рекурсивна — Ground→MeshInstance3D вложен,
+	#         без рекурсии материал не применялся и земля оставалась белой.
+	_apply_material_to_terrain(terrain, _terrain_material)
 
-func _apply_material_to_terrain(mat: StandardMaterial3D):
-	for child in terrain.get_children():
+# BUGFIX: рекурсивный обход дерева нод — ищем MeshInstance3D на любой глубине
+func _apply_material_to_terrain(node: Node, mat: StandardMaterial3D):
+	for child in node.get_children():
 		if child is MeshInstance3D:
 			child.material_override = mat
+		# Рекурсия вглубь (Ground → StaticBody3D → MeshInstance3D)
+		if child.get_child_count() > 0:
+			_apply_material_to_terrain(child, mat)
 
 # ---------- Resources ----------
 func _spawn_resources(data: Dictionary):
 	for child in resource_spawner.get_children():
 		child.queue_free()
-
 	if not ResourceLoader.exists("res://scenes/resource_node.tscn"):
 		return
-
 	var rng = RandomNumberGenerator.new()
 	rng.seed = current_planet_id * 12345
-
 	var preset    = PerformanceManager.get_preset()
 	var view_dist = preset.get("view_distance", 60.0)
 	var count     = 20 if view_dist > 80.0 else 12
-
-	var scene = preload("res://scenes/resource_node.tscn")
+	# BUGFIX: load() вместо preload() — preload() парсится статически при
+	#         загрузке скрипта; load() работает только тогда, когда нужно.
+	var scene = load("res://scenes/resource_node.tscn")
+	if not scene:
+		return
 	for i in range(count):
 		var res_type = data["resources"][rng.randi() % data["resources"].size()]
 		var node = scene.instantiate()
