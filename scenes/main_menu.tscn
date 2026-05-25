@@ -30,7 +30,7 @@ offset_left = -300
 offset_right = 300
 text = "STELLAR BASE"
 horizontal_alignment = 1
-add_theme_font_size_override = 40
+theme_override_font_sizes/font_size = 40
 
 [node name="SubtitleLabel" type="Label" parent="."]
 anchor_left = 0.5
