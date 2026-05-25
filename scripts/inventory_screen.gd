@@ -84,11 +84,14 @@ func _ready():
 func _on_visibility_changed():
 	if not is_inside_tree():
 		return
+	var _mob = OS.has_feature("android") or OS.has_feature("mobile")
 	if visible:
 		_refresh()
-		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		if not _mob:
+			Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 	else:
-		Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
+		if not _mob:
+			Input.set_mouse_mode(Input.MOUSE_MODE_CAPTURED)
 
 func _refresh():
 	# Ресурсы
