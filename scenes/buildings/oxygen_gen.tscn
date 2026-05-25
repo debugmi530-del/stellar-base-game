@@ -1,4 +1,4 @@
-[gd_scene load_steps=4 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="Script" path="res://scripts/buildings/oxygen_gen.gd" id="1"]
 
@@ -17,6 +17,9 @@ emission_enabled = true
 emission = Color(0.0, 0.3, 0.3, 1)
 roughness = 0.5
 
+[sub_resource type="SphereShape3D" id="ZoneSphere_1"]
+radius = 8.0
+
 [node name="OxygenGen" type="StaticBody3D"]
 script = ExtResource("1")
 
@@ -30,3 +33,4 @@ surface_material_override/0 = SubResource("Mat_1")
 [node name="OxygenZone" type="Area3D" parent="."]
 
 [node name="ZoneShape" type="CollisionShape3D" parent="OxygenZone"]
+shape = SubResource("ZoneSphere_1")
